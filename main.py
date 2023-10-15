@@ -1,11 +1,11 @@
 # FastAPI imports
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 # Model imports
 from model import Customer, CustomerCreate, SessionLocal, ResponseCustomer
 
 # other imports
-from typing import List
+from typing import List, Optional
 import uvicorn
 import stripe
 from dotenv import load_dotenv
@@ -15,6 +15,48 @@ load_dotenv()
 app = FastAPI()
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
+webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
+
+# Handle Incoming requests from Stripe
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request, event_id: Optional[str] = None):
+    payload = await request.body()
+    sign_headers = request.headers.get("stripe-signature")
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sign_headers, webhook_secret
+        )
+    except Exception as e:
+        return {"error": f"Error: {str(e)}"}
+    
+    # Handle the specific events
+    if event.type == "customer.created":
+        customer = event.data.object
+        db = SessionLocal()
+        db_customer = Customer(id=customer["id"], name=customer["name"], email=customer["email"])
+        db.add(db_customer)
+        db.commit()
+        db.refresh(db_customer)
+        db.close()
+    
+    if event.type == "customer.updated":
+        customer = event.data.object
+        db = SessionLocal()
+        db_customer = db.query(Customer).filter_by(id=customer["id"]).first()
+        db_customer.name = customer["name"]
+        db_customer.email = customer["email"]
+        db.commit()
+        db.refresh(customer)
+        db.close()
+        
+    if event.type == "customer.deleted":
+        customer = event.data.object
+        db = SessionLocal()
+        db_customer = db.query(Customer).filter_by(id=customer["id"]).first()
+        db.delete(db_customer)
+        db.commit()
+        db.close()
 
 # API routes
 @app.post("/stripe/customers", response_model=ResponseCustomer)
