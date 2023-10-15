@@ -16,7 +16,7 @@ Base = declarative_base()
 
 class Customer(Base):
     __tablename__ = "customer"
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(String, primary_key=True, index=True)
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     class Config:
@@ -29,6 +29,6 @@ class CustomerCreate(BaseModel):
     email: str
     
 class ResponseCustomer(BaseModel):
-    id: int
+    id: str
     name: str
     email: str

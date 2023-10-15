@@ -19,12 +19,20 @@ stripe.api_key = os.getenv("STRIPE_API_KEY")
 # API routes
 @app.post("/stripe/customers", response_model=ResponseCustomer)
 async def create_customer(customer: CustomerCreate):
+    #Saving to stripe db
+    response = stripe.Customer.create(
+        name=customer.name,
+        email=customer.email
+    )
+    
+    # Saving to our db
     db = SessionLocal()
-    db_customer = Customer(name=customer.name, email=customer.email)
+    db_customer = Customer(id=response["id"], name=customer.name, email=customer.email)
     db.add(db_customer)
     db.commit()
     db.refresh(db_customer)
     db.close()
+    
     return db_customer
 
 @app.get("/stripe/customers", response_model=List[ResponseCustomer])
@@ -34,15 +42,26 @@ async def get_customer():
     db.close()
     return customers
 
-@app.get("/stripe/customers", response_model=ResponseCustomer)
-async def get_customer(id: int):
+@app.get("/stripe/customers/get", response_model=ResponseCustomer)
+async def get_specific_customer(id: str):
     db = SessionLocal()
     customer = db.query(Customer).filter_by(id=id).first()
     db.close()
     return customer
 
 @app.put("/stripe/customers", response_model=ResponseCustomer)
-async def update_customer(id: int, data: CustomerCreate):
+async def update_customer(id: str, data: CustomerCreate):
+    #updating in stripe
+    stripe.Customer.modify(
+        id,
+        name=data.name
+    )
+    stripe.Customer.modify(
+        id,
+        email=data.email
+    )
+    
+    #updating in db
     db = SessionLocal()
     customer = db.query(Customer).filter_by(id=id).first()
     customer.name = data.name
@@ -53,7 +72,11 @@ async def update_customer(id: int, data: CustomerCreate):
     return customer
 
 @app.delete("/stripe/customers", response_model=str)
-async def delete_customer(id: int):
+async def delete_customer(id: str):
+    # deleting from stripe
+    stripe.Customer.delete(id)
+    
+    # deleting from db
     db = SessionLocal()
     customer = db.query(Customer).filter_by(id=id).first()
     db.delete(customer)
