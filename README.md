@@ -45,8 +45,14 @@ python3 -m venv [your_environment_name]
 .\[your_environment_name]\Scripts\activate
 ```
 3. Create .env file
-Add STRIPE_API_KEY=[Your api key here] create a stripe account
-Add STRIPE_WEBHOOK_SECRET=[your webhook secret here] create a public webhook endpoint 
+Add STRIPE_API_KEY=[Your api key here]
+
+create a stripe account
+
+Add STRIPE_WEBHOOK_SECRET=[your webhook secret here] 
+
+create a public webhook endpoint 
+
 format
 ```sh
 STRIPE_API_KEY="api_key"
@@ -69,7 +75,7 @@ python3 main.py
 ## 🧠 Usage
 Built version:
 - Python v3.10.5
-- Django v0.103.2
+- FastAPI v0.103.2
 
 The Basic goal is to make two way syncing.
 
