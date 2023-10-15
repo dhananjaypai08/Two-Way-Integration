@@ -61,24 +61,43 @@ async def stripe_webhook(request: Request, event_id: Optional[str] = None):
 # API routes
 @app.post("/stripe/customers", response_model=ResponseCustomer)
 async def create_customer(customer: CustomerCreate):
+    """Create a new customer on Local + stripe
+
+    Args:
+        customer (CustomerCreate): model details of customer
+
+    Returns:
+        ResponseCustomer: details of the created customer
+    """
     #Saving to stripe db
-    response = stripe.Customer.create(
-        name=customer.name,
-        email=customer.email
-    )
-    
-    # Saving to our db
-    db = SessionLocal()
-    db_customer = Customer(id=response["id"], name=customer.name, email=customer.email)
-    db.add(db_customer)
-    db.commit()
-    db.refresh(db_customer)
-    db.close()
+    try:
+        response = stripe.Customer.create(
+            name=customer.name,
+            email=customer.email
+        )
+    except:
+        raise Exception(f"Either email {customer.email} already exists or details are not provided")
+
+    # Saving to our db  
+    try:
+        db = SessionLocal()
+        db_customer = Customer(id=response["id"], name=customer.name, email=customer.email)
+        db.add(db_customer)
+        db.commit()
+        db.refresh(db_customer)
+        db.close()
+    except Exception as e:
+        raise (f"Something went wrong: {str(e)}")
     
     return db_customer
 
 @app.get("/stripe/customers", response_model=List[ResponseCustomer])
 async def get_customer():
+    """Get all the customers
+
+    Returns:
+        List[ResponseCustomer]: list details of the retrieved customer
+    """
     db = SessionLocal()
     customers = db.query(Customer).all()
     db.close()
@@ -86,45 +105,88 @@ async def get_customer():
 
 @app.get("/stripe/customers/get", response_model=ResponseCustomer)
 async def get_specific_customer(id: str):
-    db = SessionLocal()
-    customer = db.query(Customer).filter_by(id=id).first()
-    db.close()
+    """ Get a specific customer
+
+    Args:
+        id (str): Customer ID
+
+    Returns:
+        ResponseCustomer: details of the retrieved customer
+    """
+    try:
+        db = SessionLocal()
+        customer = db.query(Customer).filter_by(id=id).first()
+        db.close()
+    except Exception as e:
+        raise (f"Something went wrong: {str(e)}")
     return customer
 
 @app.put("/stripe/customers", response_model=ResponseCustomer)
 async def update_customer(id: str, data: CustomerCreate):
+    """ Updating a customer in strip + local
+
+    Args:
+        id (str): customer ID
+        data (CustomerCreate): Customer model Details
+
+    Returns:
+        ResponseCustomer: details of the updated customer
+    """
     #updating in stripe
-    stripe.Customer.modify(
-        id,
-        name=data.name
-    )
-    stripe.Customer.modify(
-        id,
-        email=data.email
-    )
+    try:
+        stripe.Customer.modify(
+            id,
+            name=data.name
+        )
+    except:
+        pass
+    try:
+        stripe.Customer.modify(
+            id,
+            email=data.email
+        )
+    except:
+        pass
     
     #updating in db
-    db = SessionLocal()
-    customer = db.query(Customer).filter_by(id=id).first()
-    customer.name = data.name
-    customer.email = data.email
-    db.commit()
-    db.refresh(customer)
-    db.close()
+    try:
+        db = SessionLocal()
+        customer = db.query(Customer).filter_by(id=id).first()
+        customer.name = data.name
+        customer.email = data.email
+        db.commit()
+        db.refresh(customer)
+        db.close()
+    except Exception as e:
+        raise (f"Something went wrong: {str(e)}")
     return customer
 
 @app.delete("/stripe/customers", response_model=str)
 async def delete_customer(id: str):
-    # deleting from stripe
-    stripe.Customer.delete(id)
+    """ Deleting customer from local + stripe
+
+    Args:
+        id (str): customer_id
+
+    Returns:
+        str: success message
+    """
+    try:
+        # deleting from stripe
+        stripe.Customer.delete(id)
+    except Exception as e:
+        raise (f"Something went wrong: {str(e)}")
     
-    # deleting from db
-    db = SessionLocal()
-    customer = db.query(Customer).filter_by(id=id).first()
-    db.delete(customer)
-    db.commit()
-    db.close()
-    return "Customer deleted"
+    try:
+        # deleting from db
+        db = SessionLocal()
+        customer = db.query(Customer).filter_by(id=id).first()
+        db.delete(customer)
+        db.commit()
+        db.close()
+        return "Customer deleted"
+    except Exception as e:
+        raise (f"Something went wrong: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", reload=True)
