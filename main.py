@@ -4,6 +4,10 @@ from fastapi import FastAPI, Request
 # Model imports
 from model import Customer, CustomerCreate, SessionLocal, ResponseCustomer
 
+# Redis and job import
+from redis import Redis
+from rq import Queue
+from job import local_to_stripe_create, local_to_stripe_update, local_to_stripe_delete
 # other imports
 from typing import List, Optional
 import uvicorn
@@ -13,6 +17,8 @@ import os
 
 load_dotenv()
 app = FastAPI()
+redis_conn = Redis(host="localhost", port=6379)
+task_queue = Queue("task_queue", connection=redis_conn)
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
 webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
@@ -70,6 +76,9 @@ async def create_customer(customer: CustomerCreate):
         ResponseCustomer: details of the created customer
     """
     #Saving to stripe db
+    # response = task_queue.enqueue(local_to_stripe_create, customer)
+    # print(response)
+    #Saving to stripe db
     try:
         response = stripe.Customer.create(
             name=customer.name,
@@ -77,7 +86,8 @@ async def create_customer(customer: CustomerCreate):
         )
     except:
         raise Exception(f"Either email {customer.email} already exists or details are not provided")
-
+    print("Changes saved to stripe account")
+    
     # Saving to our db  
     try:
         db = SessionLocal()
@@ -89,7 +99,8 @@ async def create_customer(customer: CustomerCreate):
     except Exception as e:
         raise (f"Something went wrong: {str(e)}")
     
-    return db_customer
+    print("changes saved to db")
+    return customer_db
 
 @app.get("/stripe/customers", response_model=List[ResponseCustomer])
 async def get_customer():
@@ -133,6 +144,10 @@ async def update_customer(id: str, data: CustomerCreate):
         ResponseCustomer: details of the updated customer
     """
     #updating in stripe
+    # response = task_queue.enqueue(local_to_stripe_update, id, data)
+    # print(response)
+    
+    #updating in stripe
     try:
         stripe.Customer.modify(
             id,
@@ -147,6 +162,7 @@ async def update_customer(id: str, data: CustomerCreate):
         )
     except:
         pass
+    print("Changes have been done from local to stripe account")
     
     #updating in db
     try:
@@ -171,14 +187,20 @@ async def delete_customer(id: str):
     Returns:
         str: success message
     """
+    # deleting from stripe
+    # response = task_queue.enqueue(local_to_stripe_delete, id)
+    # print(response)
+    
+    # deleting from stripe
     try:
-        # deleting from stripe
         stripe.Customer.delete(id)
     except Exception as e:
         raise (f"Something went wrong: {str(e)}")
+    print("Customer deleted from stripe account")
     
+    # deleting from db
     try:
-        # deleting from db
+        
         db = SessionLocal()
         customer = db.query(Customer).filter_by(id=id).first()
         db.delete(customer)
