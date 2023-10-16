@@ -4,10 +4,9 @@ from fastapi import FastAPI, Request
 # Model imports
 from model import Customer, CustomerCreate, SessionLocal, ResponseCustomer
 
-# Redis and job import
-from redis import Redis
-from rq import Queue
-from job import local_to_stripe_create, local_to_stripe_update, local_to_stripe_delete
+# Kafka imports
+from kafka import KafkaProducer
+
 # other imports
 from typing import List, Optional
 import uvicorn
@@ -17,8 +16,7 @@ import os
 
 load_dotenv()
 app = FastAPI()
-redis_conn = Redis(host="localhost", port=6379)
-task_queue = Queue("task_queue", connection=redis_conn)
+producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda v: str(v).encode('utf-8'))
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
 webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
@@ -75,32 +73,9 @@ async def create_customer(customer: CustomerCreate):
     Returns:
         ResponseCustomer: details of the created customer
     """
-    #Saving to stripe db
-    # response = task_queue.enqueue(local_to_stripe_create, customer)
-    # print(response)
-    #Saving to stripe db
-    try:
-        response = stripe.Customer.create(
-            name=customer.name,
-            email=customer.email
-        )
-    except:
-        raise Exception(f"Either email {customer.email} already exists or details are not provided")
-    print("Changes saved to stripe account")
-    
-    # Saving to our db  
-    try:
-        db = SessionLocal()
-        db_customer = Customer(id=response["id"], name=customer.name, email=customer.email)
-        db.add(db_customer)
-        db.commit()
-        db.refresh(db_customer)
-        db.close()
-    except Exception as e:
-        raise (f"Something went wrong: {str(e)}")
-    
-    print("changes saved to db")
-    return customer_db
+    # Handle the creation of customer using kafka producer
+    producer.send('local_and_to_stripe', key="customer_created".encode(), value=customer)
+    return {"message": "Customer creation request sent to Kafka"}
 
 @app.get("/stripe/customers", response_model=List[ResponseCustomer])
 async def get_customer():
@@ -143,39 +118,11 @@ async def update_customer(id: str, data: CustomerCreate):
     Returns:
         ResponseCustomer: details of the updated customer
     """
-    #updating in stripe
-    # response = task_queue.enqueue(local_to_stripe_update, id, data)
-    # print(response)
-    
-    #updating in stripe
-    try:
-        stripe.Customer.modify(
-            id,
-            name=data.name
-        )
-    except:
-        pass
-    try:
-        stripe.Customer.modify(
-            id,
-            email=data.email
-        )
-    except:
-        pass
-    print("Changes have been done from local to stripe account")
-    
-    #updating in db
-    try:
-        db = SessionLocal()
-        customer = db.query(Customer).filter_by(id=id).first()
-        customer.name = data.name
-        customer.email = data.email
-        db.commit()
-        db.refresh(customer)
-        db.close()
-    except Exception as e:
-        raise (f"Something went wrong: {str(e)}")
-    return customer
+    # Handle the modification of customer using kafka producer
+    data = data.dict()
+    data["id"] = id
+    producer.send('local_and_to_stripe', key="customer_updated".encode(), value=data)
+    return {"message": "Customer modification request sent to Kafka"}
 
 @app.delete("/stripe/customers", response_model=str)
 async def delete_customer(id: str):
@@ -187,28 +134,9 @@ async def delete_customer(id: str):
     Returns:
         str: success message
     """
-    # deleting from stripe
-    # response = task_queue.enqueue(local_to_stripe_delete, id)
-    # print(response)
-    
-    # deleting from stripe
-    try:
-        stripe.Customer.delete(id)
-    except Exception as e:
-        raise (f"Something went wrong: {str(e)}")
-    print("Customer deleted from stripe account")
-    
-    # deleting from db
-    try:
-        
-        db = SessionLocal()
-        customer = db.query(Customer).filter_by(id=id).first()
-        db.delete(customer)
-        db.commit()
-        db.close()
-        return "Customer deleted"
-    except Exception as e:
-        raise (f"Something went wrong: {str(e)}")
+    # Handle the deletion of customer using kafka producer
+    producer.send('local_and_to_stripe', key="customer_deleted".encode(), value=id)
+    return {"message": "Customer deletion request sent to Kafka"}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", reload=True)
