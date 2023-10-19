@@ -27,6 +27,7 @@ webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
 # Handle Incoming requests from Stripe
 @app.post("/stripe/webhook")
 async def stripe_webhook(request: Request, event_id: Optional[str] = None):
+    """ This endpoint is a webhook that detects modifications from stripe account and updates to our Local DB using Redis Queue"""
     payload = await request.body()
     sign_headers = request.headers.get("stripe-signature")
     
@@ -73,7 +74,7 @@ async def create_customer(customer: CustomerCreate):
         customer (CustomerCreate): model details of customer
 
     Returns:
-        ResponseCustomer: details of the created customer
+        dict: Status of the tasks added to the queue
     """
     # Serialize the task, including parameters, to JSON
     new_customer = customer.dict()
@@ -122,7 +123,7 @@ async def update_customer(id: str, data: CustomerCreate):
         data (CustomerCreate): Customer model Details
 
     Returns:
-        ResponseCustomer: details of the updated customer
+        dict: Status of the tasks added to the queue
     """
     customer = data.dict()
     customer['id'] = id
