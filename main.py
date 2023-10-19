@@ -4,8 +4,8 @@ from fastapi import FastAPI, Request
 # Model imports
 from model import Customer, CustomerCreate, SessionLocal, ResponseCustomer
 
-# Kafka imports
-from kafka import KafkaProducer
+# redis import
+import redis
 
 # other imports
 from typing import List, Optional
@@ -13,10 +13,13 @@ import uvicorn
 import stripe
 from dotenv import load_dotenv
 import os
+import json
 
 load_dotenv()
 app = FastAPI()
-producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda v: str(v).encode('utf-8'))
+
+# Redis Connection
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
 
 stripe.api_key = os.getenv("STRIPE_API_KEY")
 webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
@@ -32,38 +35,37 @@ async def stripe_webhook(request: Request, event_id: Optional[str] = None):
             payload, sign_headers, webhook_secret
         )
     except Exception as e:
-        return {"error": f"Error: {str(e)}"}
+        print(f"Error: {str(e)}")
     
     # Handle the specific events
     if event.type == "customer.created":
         customer = event.data.object
-        db = SessionLocal()
-        db_customer = Customer(id=customer["id"], name=customer["name"], email=customer["email"])
-        db.add(db_customer)
-        db.commit()
-        db.refresh(db_customer)
-        db.close()
+        # Serialize the task, including parameters, to JSON
+        customer['key'] = 'customer_created'
+        task = json.dumps(customer)
+        # Add the task to the queue
+        redis_client.lpush("inward", task)
+        print("Customer Creation request from stripe was sent to Redis Queue")
     
     if event.type == "customer.updated":
         customer = event.data.object
-        db = SessionLocal()
-        db_customer = db.query(Customer).filter_by(id=customer["id"]).first()
-        db_customer.name = customer["name"]
-        db_customer.email = customer["email"]
-        db.commit()
-        db.refresh(customer)
-        db.close()
+        customer['key'] = 'customer_updated'
+        task = json.dumps(customer)
+        # Add the task to the queue
+        redis_client.lpush("inward", task)
+        print("Customer Updation request sent to Redis")
         
     if event.type == "customer.deleted":
         customer = event.data.object
-        db = SessionLocal()
-        db_customer = db.query(Customer).filter_by(id=customer["id"]).first()
-        db.delete(db_customer)
-        db.commit()
-        db.close()
+        customer = {"id": customer['id']}
+        customer['key'] = 'customer_deleted'
+        task = json.dumps(customer)
+        # Add the task to the queue
+        redis_client.lpush("inward", task)
+        print("Customer deletion request sent to Redis")
 
 # API routes
-@app.post("/stripe/customers", response_model=ResponseCustomer)
+@app.post("/stripe/customers", response_model=dict)
 async def create_customer(customer: CustomerCreate):
     """Create a new customer on Local + stripe
 
@@ -73,9 +75,13 @@ async def create_customer(customer: CustomerCreate):
     Returns:
         ResponseCustomer: details of the created customer
     """
-    # Handle the creation of customer using kafka producer
-    producer.send('local_and_to_stripe', key="customer_created".encode(), value=customer)
-    return {"message": "Customer creation request sent to Kafka"}
+    # Serialize the task, including parameters, to JSON
+    new_customer = customer.dict()
+    new_customer['key'] = 'customer_created'
+    task = json.dumps(new_customer)
+    # Add the task to the queue
+    redis_client.lpush("outward", task)
+    return {"message": "Customer Creation request sent to Redis Queue"}
 
 @app.get("/stripe/customers", response_model=List[ResponseCustomer])
 async def get_customer():
@@ -104,10 +110,10 @@ async def get_specific_customer(id: str):
         customer = db.query(Customer).filter_by(id=id).first()
         db.close()
     except Exception as e:
-        raise (f"Something went wrong: {str(e)}")
+        print(f"Something went wrong: {str(e)}")
     return customer
 
-@app.put("/stripe/customers", response_model=ResponseCustomer)
+@app.put("/stripe/customers", response_model=dict)
 async def update_customer(id: str, data: CustomerCreate):
     """ Updating a customer in strip + local
 
@@ -118,13 +124,15 @@ async def update_customer(id: str, data: CustomerCreate):
     Returns:
         ResponseCustomer: details of the updated customer
     """
-    # Handle the modification of customer using kafka producer
-    data = data.dict()
-    data["id"] = id
-    producer.send('local_and_to_stripe', key="customer_updated".encode(), value=data)
-    return {"message": "Customer modification request sent to Kafka"}
+    customer = data.dict()
+    customer['id'] = id
+    customer['key'] = 'customer_updated'
+    task = json.dumps(customer)
+    # Add the task to the queue
+    redis_client.lpush("outward", task)
+    return {"message": "Customer Updation request sent to Redis"}
 
-@app.delete("/stripe/customers", response_model=str)
+@app.delete("/stripe/customers", response_model=dict)
 async def delete_customer(id: str):
     """ Deleting customer from local + stripe
 
@@ -134,9 +142,12 @@ async def delete_customer(id: str):
     Returns:
         str: success message
     """
-    # Handle the deletion of customer using kafka producer
-    producer.send('local_and_to_stripe', key="customer_deleted".encode(), value=id)
-    return {"message": "Customer deletion request sent to Kafka"}
+    customer = {"id": id}
+    customer['key'] = 'customer_deleted'
+    task = json.dumps(customer)
+    # Add the task to the queue
+    redis_client.lpush("outward", task)
+    return {"message": "Customer deletion request sent to Redis"}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", reload=True)

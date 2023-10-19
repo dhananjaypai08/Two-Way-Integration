@@ -66,6 +66,15 @@ cd Two-Way-Integration
 pip3 install -r requirements.txt
 ```
 
+4. Starting the Producer and consumer Service (Redis)
+
+```sh
+python inward.py
+python outward.py
+```
+
+Note: Enter both commands in two different terminals
+
 4. Running the model and the APP
 ```sh
 python3 model.py 
