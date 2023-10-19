@@ -20,9 +20,9 @@ Zenskar Assignment for handling customer catalog and the system should be adapta
 
 ### 🔧 Built With
   - FastAPI
-  - Redis
-  - SQLite
-  - SQLAlchemy
+  - Redis ~ Redis Queue for sending modification tasks to consumer and the producer can prcoess these tasks
+  - SQLite ~ Local DB
+  - SQLAlchemy ~ ORM for focusing on logic 
   - Stripe
   - Webhooks ~ for sending events from stripe to local endpoint
   - ngrok ~ for forward referencing local url to public endpoint
@@ -45,28 +45,33 @@ python3 -m venv [your_environment_name]
 .\[your_environment_name]\Scripts\activate
 ```
 3. Create .env file
+   
 Add STRIPE_API_KEY=[Your api key here]
 
-create a stripe account
+- create a stripe account
+- Install NGROK on your computer
+- Start the ngrok terminal
+- Write ```ngrok http 8000```
+This would give a public endpoint mapped to localhost:port=8000
 
 Add STRIPE_WEBHOOK_SECRET=[your webhook secret here] 
 
-create a public webhook endpoint 
+create a public webhook endpoint and add the ngrok terminal public provided and select events for customer that are ```customer_created, customer_updated, customer_deleted``` To track Inward modifications 
 
-format
+##### Format
 ```sh
 STRIPE_API_KEY="api_key"
 STRIPE_WEBHOOK_SECRET="webhook_secret"
 ```
 
-3. Installing dependencies and requirements
+4. Installing dependencies and requirements
 
 ```sh
 cd Two-Way-Integration
 pip3 install -r requirements.txt
 ```
 
-4. Starting the Producer and consumer Service (Redis)
+5. Starting the Producer and consumer Service (Redis)
 
 ```sh
 python inward.py
@@ -75,7 +80,7 @@ python outward.py
 
 Note: Enter both commands in two different terminals
 
-4. Running the model and the APP
+6. Running the model and the APP
 ```sh
 python3 model.py 
 python3 main.py
