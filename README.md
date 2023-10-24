@@ -14,13 +14,14 @@
 - Building Local API which handles GET, POST, PUT and DELETE http requests. 
 - Changes made to the Local DB will be reflected in Stripe test accounts.
 - Changes made to the Stripe test account will be reflected in local db.
+- Caching System with 30 seconds expiration period for GET requests
 
 ## 💻 About The Project
 Zenskar Assignment for handling customer catalog and the system should be adaptable to different situations and different product catalogs.
 
 ### 🔧 Built With
   - FastAPI
-  - Redis ~ Redis Queue for sending modification tasks to consumer and the producer can prcoess these tasks
+  - Redis ~ Redis Queue for sending modification tasks to consumer and the producer can prcoess these tasks, Caching system
   - SQLite ~ Local DB
   - SQLAlchemy ~ ORM for focusing on logic 
   - Stripe
@@ -52,6 +53,8 @@ Add STRIPE_API_KEY=[Your api key here]
 - Install NGROK on your computer
 - Start the ngrok terminal
 - Write ```ngrok http 8000```
+- Copy this public endpoint and paste it in stripe webhook public endpoint field
+
 This would give a public endpoint mapped to localhost:port=8000
 
 Add STRIPE_WEBHOOK_SECRET=[your webhook secret here] 
@@ -84,6 +87,12 @@ Note: Enter both commands in two different terminals
 ```sh
 python3 model.py 
 python3 main.py
+```
+
+7. Test
+```
+Test these API's via PostMan 
+Collection Link: https://martian-desert-997363.postman.co/workspace/New-Team-Workspace~2303f204-9508-4f03-bb89-637acaeaf194/collection/18346840-5c17a97c-5076-4f2b-9055-1d2ecf6d3928?action=share&creator=18346840
 ```
 
 ## 🧠 Usage

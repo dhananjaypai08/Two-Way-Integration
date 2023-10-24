@@ -21,6 +21,9 @@ app = FastAPI()
 # Redis Connection
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
 
+# Cache setup
+redis_cache = redis.StrictRedis(host='localhost', port=6379, db=0)
+
 stripe.api_key = os.getenv("STRIPE_API_KEY")
 webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
 
@@ -91,9 +94,16 @@ async def get_customer():
     Returns:
         List[ResponseCustomer]: list details of the retrieved customer
     """
+    # Attempt to retrieve the resource from the cache
+    cached_resource = redis_cache.get("resource")
+    if cached_resource: return json.loads(cached_resource)
+    
     db = SessionLocal()
     customers = db.query(Customer).all()
     db.close()
+    resources = [{"id": customer.id, "name": customer.name, "email": customer.email} for customer in customers]
+    # Cache the resource with a short expiration time (e.g., 60 seconds)
+    redis_cache.setex("resource", 30, json.dumps(resources))
     return customers
 
 @app.get("/stripe/customers/get", response_model=ResponseCustomer)
@@ -107,9 +117,15 @@ async def get_specific_customer(id: str):
         ResponseCustomer: details of the retrieved customer
     """
     try:
+        # Attempt to retrieve the resource from the cache
+        cached_resource = redis_cache.get(f"resource_{id}")
+        if cached_resource: return json.loads(cached_resource)
+        
         db = SessionLocal()
         customer = db.query(Customer).filter_by(id=id).first()
         db.close()
+        # Cache the resource with a short expiration time (e.g., 60 seconds)
+        redis_cache.setex(f"resource_{id}", 30, json.dumps(customer))
     except Exception as e:
         print(f"Something went wrong: {str(e)}")
     return customer
